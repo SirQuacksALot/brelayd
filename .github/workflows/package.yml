@@ -23,19 +23,19 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install packaging tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y rpm
-          cargo install cargo-deb cargo-rpm
+        run: cargo install cargo-deb cargo-generate-rpm
 
       - name: Build release binary
         run: cargo build --release
+
+      - name: Strip debug symbols
+        run: strip -s target/release/brelayd
 
       - name: Build Debian package
         run: cargo deb --no-build
 
       - name: Build RPM package
-        run: cargo rpm build
+        run: cargo generate-rpm
 
       - name: Build portable tarball
         run: |

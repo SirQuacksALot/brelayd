@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Config-driven daemon that runs commands on battery events (UPower/D-Bus)"
 license = "MIT"
+repository = "https://github.com/SirQuacksALot/brelayd"
 
 [dependencies]
 anyhow = "1"
@@ -24,4 +25,11 @@ priority = "optional"
 assets = [
     ["config.example.toml", "etc/brelayd/config.toml", "644"],
     ["contrib/brelayd.service", "usr/lib/systemd/user/brelayd.service", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/brelayd", dest = "/usr/bin/brelayd", mode = "755" },
+    { source = "config.example.toml", dest = "/etc/brelayd/config.toml", mode = "644", config = "noreplace" },
+    { source = "contrib/brelayd.service", dest = "/usr/lib/systemd/user/brelayd.service", mode = "644" },
 ]
