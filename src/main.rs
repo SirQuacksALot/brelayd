@@ -1,14 +1,17 @@
 mod command;
 mod config;
+mod engine;
 mod state;
 mod trigger;
 mod upower;
 
-use std::collections::HashMap;
-use std::time::Instant;
+use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
 use clap::Parser;
+use tokio::signal::unix::{signal, SignalKind};
+
+use crate::engine::Engine;
 
 /// Run commands in response to battery events (UPower/D-Bus).
 #[derive(Parser, Debug)]
@@ -46,82 +49,72 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("no rules defined");
     }
 
-    // Restore persisted rule state and build the per-rule runtime.
-    let mut state = state::State::load();
-    let mut runtimes: HashMap<String, trigger::RuleRuntime> = cfg
-        .rules
-        .iter()
-        .map(|r| {
-            let inside = state.inside.get(&r.name).copied().unwrap_or(false);
-            (r.name.clone(), trigger::RuleRuntime::new(inside))
-        })
-        .collect();
+    let persisted = state::State::load();
+    let engine = Arc::new(RwLock::new(Engine::new(&cfg, &persisted)));
+    let monitor = Arc::new(upower::UpowerMonitor::connect().await?);
 
-    tracing::info!(
-        "loaded {} rule(s), {} currently inside",
-        cfg.rules.len(),
-        runtimes.values().filter(|rt| rt.inside()).count()
-    );
+    // SIGHUP → reload config and immediately re-evaluate the new rules.
+    {
+        let engine = Arc::clone(&engine);
+        let monitor = Arc::clone(&monitor);
+        let config_path = cli.config.clone();
+        tokio::spawn(async move {
+            let mut hangup = match signal(SignalKind::hangup()) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("failed to install SIGHUP handler: {e:#}");
+                    return;
+                }
+            };
+            loop {
+                hangup.recv().await;
+                tracing::info!("SIGHUP received, reloading config");
+                match config::load(config_path.as_deref()) {
+                    Ok(new_cfg) => match reload(&engine, &monitor, &new_cfg).await {
+                        Ok(()) => {
+                            tracing::info!("config reloaded ({} rule(s))", new_cfg.rules.len())
+                        }
+                        Err(e) => tracing::error!("reload failed: {e:#}"),
+                    },
+                    Err(e) => tracing::error!("reload: failed to load config: {e:#}"),
+                }
+            }
+        });
+    }
 
-    let monitor = upower::UpowerMonitor::connect().await?;
-
-    upower::run(monitor, |event| {
-        if dispatch(&cfg, &mut runtimes, &event, &mut state) {
-            state.save();
+    upower::run(&monitor, {
+        let engine = Arc::clone(&engine);
+        move |event| {
+            let mut engine = engine.write().unwrap();
+            if engine.handle_event(&event) {
+                engine.snapshot_state().save();
+            }
         }
     })
     .await
 }
 
-/// Feed an event to all matching rules, run their commands, and update state.
-/// Returns true if any rule's `inside` flag changed (i.e. state should be saved).
-fn dispatch(
+/// Reload the engine's rule set and immediately evaluate the current battery
+/// values against the new rules (so a freshly added rule fires right away).
+async fn reload(
+    engine: &Arc<RwLock<Engine>>,
+    monitor: &Arc<upower::UpowerMonitor>,
     cfg: &config::Config,
-    runtimes: &mut HashMap<String, trigger::RuleRuntime>,
-    event: &trigger::Event,
-    state: &mut state::State,
-) -> bool {
-    let now = Instant::now();
-    let mut changed = false;
-
-    for rule in &cfg.rules {
-        if rule.condition.source != event.source || rule.condition.field != event.field {
-            continue;
-        }
-
-        let rt = runtimes.get_mut(&rule.name).expect("runtime exists");
-        match rt.on_value(rule, &event.value, now) {
-            trigger::Action::Enter => {
-                let ctx = command::Ctx {
-                    rule: rule.name.as_str(),
-                    source: event.source.as_str(),
-                    field: event.field.as_str(),
-                    value: &event.value,
-                };
-                if let Err(e) = command::run(&rule.run, &ctx) {
-                    tracing::error!("rule '{}' run failed: {e:#}", rule.name);
-                }
-                state.inside.insert(rule.name.clone(), true);
-                changed = true;
-            }
-            trigger::Action::Exit => {
-                if let Some(on_exit) = &rule.on_exit {
-                    let ctx = command::Ctx {
-                        rule: rule.name.as_str(),
-                        source: event.source.as_str(),
-                        field: event.field.as_str(),
-                        value: &event.value,
-                    };
-                    if let Err(e) = command::run(on_exit, &ctx) {
-                        tracing::error!("rule '{}' on_exit failed: {e:#}", rule.name);
-                    }
-                }
-                state.inside.insert(rule.name.clone(), false);
-                changed = true;
-            }
-            trigger::Action::None => {}
-        }
+) -> anyhow::Result<()> {
+    {
+        let mut engine = engine.write().unwrap();
+        engine.reload(cfg);
     }
 
-    changed
+    let events = monitor.current_events().await?;
+
+    let mut engine = engine.write().unwrap();
+    let mut changed = false;
+    for event in &events {
+        changed |= engine.handle_event(event);
+    }
+    if changed {
+        engine.snapshot_state().save();
+    }
+    Ok(())
 }

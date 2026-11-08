@@ -34,6 +34,7 @@ cooldown = "5s"     # minimum time between two "run" executions
 - **Hysteresis & cooldown** — prevent flapping around a threshold and command spam.
 - **Persistent state** — remembers which rules are "inside", so a restart neither re-fires nor forgets to restore.
 - **Placeholders** — commands may use `{value}`, `{field}`, `{source}` and `{rule}`.
+- **Live reload** — `SIGHUP` re-reads the config and re-evaluates new rules immediately, without a restart.
 
 ## Configuration
 
@@ -62,6 +63,14 @@ Validate a config without running the daemon:
 ```sh
 brelayd --check --config config.example.toml
 ```
+
+Reload the config without restarting (`SIGHUP`):
+
+```sh
+systemctl --user reload brelayd
+```
+
+Newly added rules are evaluated immediately.
 
 ### Rule reference
 

@@ -25,6 +25,7 @@ pub fn state_name(state: u32) -> &'static str {
     }
 }
 
+#[derive(Clone)]
 pub struct UpowerMonitor {
     proxy: PropertiesProxy<'static>,
 }
@@ -60,7 +61,7 @@ impl UpowerMonitor {
     }
 
     /// Current percentage + state as events.
-    async fn current_events(&self) -> anyhow::Result<Vec<Event>> {
+    pub async fn current_events(&self) -> anyhow::Result<Vec<Event>> {
         let pct = self.percentage().await?;
         let state = self.state().await?;
         Ok(vec![
@@ -80,7 +81,7 @@ impl UpowerMonitor {
 
 /// Emit current values once, then re-emit on every UPower change signal.
 /// Calls `on_event` for each emitted event.
-pub async fn run<F>(monitor: UpowerMonitor, mut on_event: F) -> anyhow::Result<()>
+pub async fn run<F>(monitor: &UpowerMonitor, mut on_event: F) -> anyhow::Result<()>
 where
     F: FnMut(Event),
 {
