@@ -88,7 +88,9 @@ brelayd --check --config config.example.toml
 | Arch | `makepkg -si` (see `PKGBUILD`) |
 | Debian/RPM | download from the latest release |
 
-A systemd user unit lives at [`contrib/brelayd.service`](contrib/brelayd.service):
+A systemd user unit lives at [`contrib/brelayd.service`](contrib/brelayd.service).
+The packages install it to `/usr/lib/systemd/user/brelayd.service` but do not
+enable or start it — run this once after installing:
 
 ```sh
 systemctl --user enable --now brelayd
