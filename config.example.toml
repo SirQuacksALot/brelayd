@@ -1,0 +1,18 @@
+# Example configuration for brelayd.
+#
+# One or more rules. Each rule watches a battery event and runs a command when
+# the condition becomes true (`run`), optionally another when it becomes false
+# again (`on_exit`).
+
+[[rule]]
+name = "low-battery-dim"
+source = "battery"
+field = "percentage"
+op = "<"
+value = 10
+
+run = "brightnessctl set 15%"
+on_exit = "brightnessctl set 100%"
+
+hysteresis = 2
+cooldown = "5s"

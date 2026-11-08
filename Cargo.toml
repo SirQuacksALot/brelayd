@@ -1,0 +1,27 @@
+[package]
+name = "brelayd"
+version = "0.1.0"
+edition = "2021"
+description = "Config-driven daemon that runs commands on battery events (UPower/D-Bus)"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zbus = { version = "4", features = ["tokio"] }
+
+[package.metadata.deb]
+maintainer = "SirQuacksALot <sglass@hs-mittweida.de>"
+section = "utils"
+priority = "optional"
+assets = [
+    ["config.example.toml", "etc/brelayd/config.toml", "644"],
+    ["contrib/brelayd.service", "usr/lib/systemd/user/brelayd.service", "644"],
+]
