@@ -37,7 +37,33 @@ cooldown = "5s"     # minimum time between two "run" executions
 
 ## Configuration
 
-Rules live in `~/.config/brelayd/config.toml` by default (or pass `--config`).
+Rules live in a TOML file, by default at `~/.config/brelayd/config.toml`. The
+location follows XDG conventions: `$XDG_CONFIG_HOME/brelayd/config.toml` when
+that variable is set, `~/.config/brelayd/config.toml` otherwise.
+
+To use a different file, pass `--config` (or `-c`):
+
+```sh
+brelayd --config /path/to/config.toml
+```
+
+The systemd unit uses the default location. To point it elsewhere, add a
+drop-in override via `systemctl --user edit brelayd`:
+
+```ini
+[Service]
+ExecStart=/usr/bin/brelayd --config %h/.config/brelayd/config.toml
+```
+
+(`%h` expands to your home directory.)
+
+Validate a config without running the daemon:
+
+```sh
+brelayd --check --config config.example.toml
+```
+
+### Rule reference
 
 | Field | Type | Description |
 |---|---|---|
